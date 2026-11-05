@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-sevima_ukt}
+      POSTGRES_USER: ${DB_USERNAME:-sevima}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Isi DB_PASSWORD di file .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    image: sevima-ukt:latest
+    env_file: .env
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      RUN_MIGRATIONS: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  # Menjalankan `tagihan:expire` tiap menit (lihat routes/console.php).
+  scheduler:
+    image: sevima-ukt:latest
+    command: ["php", "artisan", "schedule:work"]
+    env_file: .env
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      RUN_MIGRATIONS: "false"
+    depends_on:
+      - app
+
+volumes:
+  pgdata:
